@@ -1,8 +1,15 @@
 import type { Metadata } from 'next'
 import './globals.css'
 
-export const metadata: Metadata = { title: 'Forge Studio', description: 'Build, preview, and publish websites with AI.' }
+export const metadata: Metadata = {
+  title: 'ELIZZYVERSE',
+  description: 'Build, preview, and publish websites with AI — powered by ELIZZYVERSE.',
+}
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" className="bg-[#0b0d0f]"><body>{children}</body></html>
+  return (
+    <html lang="en" className="bg-[#0a0a12]">
+      <body>{children}</body>
+    </html>
+  )
 }
