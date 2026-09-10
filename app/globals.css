@@ -1,0 +1,9 @@
+@import 'tailwindcss';
+
+:root { --bg:#0b0d0f; --panel:#111417; --panel-2:#171b1f; --line:#252b30; --muted:#8b949e; --text:#eef2f4; --accent:#b7f36b; --accent-2:#83d7ff; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font-family:Arial, Helvetica, sans-serif; }
+button, input, textarea { font:inherit; }
+::selection { background:var(--accent); color:#10130d; }
+.scrollbar::-webkit-scrollbar { width:6px; height:6px; }.scrollbar::-webkit-scrollbar-thumb { background:#30373d; border-radius:99px; }
+.grid-bg { background-image: linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px); background-size:32px 32px; }
