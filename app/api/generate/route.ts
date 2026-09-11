@@ -1,20 +1,61 @@
 import { NextResponse } from 'next/server'
 
-const prompts: Record<string, string> = {
-  gpt5: process.env.AI_ENDPOINT_GPT5 ?? '',
-  claude: process.env.AI_ENDPOINT_CLAUDE ?? '',
-  qwen: process.env.AI_ENDPOINT_QWEN ?? '',
-}
 export async function POST(request: Request) {
-  const body = await request.json() as { model?: string; prompt?: string }
+  const body = await request.json() as {
+    model?: string
+    prompt?: string
+    images?: string[]
+  }
+
   const prompt = body.prompt?.trim()
-  if (!prompt) return NextResponse.json({ error: 'Prompt is required.' }, { status: 400 })
-  const endpoint = prompts[body.model ?? 'gpt5']
-  if (!endpoint) return NextResponse.json({ content: `I’m ready to build “${prompt}”. Add your server-side AI endpoint to generate a real project.` })
+  if (!prompt) {
+    return NextResponse.json({ error: 'Prompt is required.' }, { status: 400 })
+  }
+
+  const slugMap: Record<string, string> = {
+    gpt5: 'gpt-5',
+    claude: 'claude-haiku-4.5',
+    qwen: 'qwen3-max',
+  }
+  const slug = slugMap[body.model ?? 'gpt5'] ?? 'gpt-5'
+  const endpoint = `https://apis.davidcyril.name.ng/ai/${slug}`
+
+  let text = prompt
+  if (body.images?.length) {
+    text += '\n\n[User attached image(s) — please analyze them:]\n'
+    body.images.forEach((img, i) => {
+      text += `\nImage ${i + 1}: ${img}\n`
+    })
+  }
+
   try {
-    const response = await fetch(endpoint, { method:'POST', headers:{ 'content-type':'application/json', ...(process.env.AI_API_KEY ? { authorization:`Bearer ${process.env.AI_API_KEY}` } : {}) }, body:JSON.stringify({ model:body.model, messages:[{ role:'user', content:prompt }] }), signal:AbortSignal.timeout(30000) })
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        systemPrompt:
+          'You are ELIZZYVERSE, an expert AI that builds websites, apps, and experiences. Be fast, precise, and helpful. When images are provided, describe and use them.',
+        sessionId: 'elizzyverse',
+      }),
+      signal: AbortSignal.timeout(25000),
+    })
+
     if (!response.ok) throw new Error(`Provider returned ${response.status}`)
+
     const data = await response.json()
-    return NextResponse.json({ content:data.choices?.[0]?.message?.content ?? data.output ?? data.content ?? JSON.stringify(data) })
-  } catch { return NextResponse.json({ error:'The selected model could not be reached. Check endpoint configuration.' }, { status:502 }) }
+    const content =
+      data.result ??
+      data.choices?.[0]?.message?.content ??
+      data.output ??
+      data.content ??
+      (typeof data === 'string' ? data : JSON.stringify(data))
+
+    return NextResponse.json({ content })
+  } catch {
+    return NextResponse.json(
+      { error: 'Could not reach the AI endpoint. Try again.' },
+      { status: 502 },
+    )
+  }
 }
