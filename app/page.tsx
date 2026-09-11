@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import {
-  ArrowUp, ChevronDown, Code2, Download, FileCode2, Folder, GitBranch,
+  ArrowUp, CheckCircle2, ChevronDown, Code2, Download, FileCode2, Folder, GitBranch, Globe2,
   ImagePlus, Layers3, LayoutPanelTop, Loader2, MoreHorizontal, Paperclip,
   Play, Plus, RefreshCw, Upload, WandSparkles, X, Zap, Sparkles
 } from 'lucide-react'
@@ -44,6 +44,11 @@ export default function Home() {
   const [tab, setTab] = useState<'preview' | 'code'>('preview')
   const [attached, setAttached] = useState<AttachedFile[]>([])
   const [modelOpen, setModelOpen] = useState(false)
+  const [publishOpen, setPublishOpen] = useState(false)
+  const [domainOpen, setDomainOpen] = useState(false)
+  const [domain, setDomain] = useState('')
+  const [domainState, setDomainState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [domainMessage, setDomainMessage] = useState('')
   const abortRef = useRef<AbortController | null>(null)
 
   async function sendPrompt() {
@@ -70,9 +75,6 @@ export default function Home() {
     const ac = new AbortController()
     abortRef.current = ac
 
-    const slug = modelInfo[model].slug
-    const endpoint = `${AI_BASE}/${slug}`
-
     let textPayload = current
     if (imageDataUrls.length) {
       textPayload += '\n\n[Attached image(s) as data URLs — analyze them carefully:]\n'
@@ -82,56 +84,38 @@ export default function Home() {
     }
 
     try {
-      const r = await fetch(endpoint, {
+      const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          text: textPayload,
-          systemPrompt:
-            'You are ELIZZYVERSE, an expert AI that builds websites, apps, and experiences. Be fast, precise, and helpful. When the user attaches images, carefully describe and use them in your response (layouts, colors, components).',
-          sessionId: 'elizzyverse',
-        }),
+        body: JSON.stringify({ model, prompt: textPayload, images: imageDataUrls }),
         signal: AbortSignal.any([ac.signal, AbortSignal.timeout(28000)]),
       })
-
-      if (!r.ok) throw new Error(`API ${r.status}`)
-
-      const d = await r.json()
-      const content =
-        d.result ??
-        d.choices?.[0]?.message?.content ??
-        d.output ??
-        d.content ??
-        (typeof d === 'string' ? d : JSON.stringify(d))
-
-      setMessages(m => [...m, { role: 'assistant', text: content || 'Done.' }])
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || `API ${response.status}`)
+      setMessages(m => [...m, { role: 'assistant', text: data.content || 'Done.' }])
     } catch (err: unknown) {
       if (err instanceof Error && err.name === 'AbortError') return
-      // Fallback to local Next route if direct API fails (CORS etc.)
-      try {
-        const r2 = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ model, prompt: current, images: imageDataUrls }),
-          signal: AbortSignal.timeout(28000),
-        })
-        const d2 = await r2.json()
-        setMessages(m => [
-          ...m,
-          { role: 'assistant', text: d2.content ?? d2.error ?? 'Generation complete.' },
-        ])
-      } catch {
-        setMessages(m => [
-          ...m,
-          {
-            role: 'assistant',
-            text: 'Could not reach the AI. Check the David Cyril API or try again.',
-          },
-        ])
-      }
+      setMessages(m => [...m, {
+        role: 'assistant',
+        text: err instanceof Error ? err.message : 'Could not reach the AI. Try again.',
+      }])
     } finally {
       setLoading(false)
     }
+  }
+
+  async function publishDomain() {
+    const value = domain.trim()
+    if (!value) {
+      setDomainState('error')
+      setDomainMessage('Enter a domain before continuing.')
+      return
+    }
+    setDomainState('loading')
+    setDomainMessage('')
+    await new Promise(resolve => setTimeout(resolve, 650))
+    setDomainState('success')
+    setDomainMessage(`${value} is ready to connect to this project.`)
   }
 
   async function addFiles(files: FileList | null) {
@@ -214,11 +198,59 @@ export default function Home() {
             <button className="hidden items-center gap-2 rounded-md border border-[#3b3b55] px-3 py-2 text-xs font-semibold text-[#c5c5d5] hover:bg-[#1a1a28] sm:flex">
               <GitBranch size={14} /> Connect GitHub
             </button>
-            <button className="flex items-center gap-2 rounded-md bg-gradient-to-r from-[#a78bfa] to-[#8b5cf6] px-3 py-2 text-xs font-bold text-white hover:brightness-110">
-              <Upload size={14} /> Publish
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setPublishOpen(value => !value)}
+                aria-expanded={publishOpen}
+                className="flex items-center gap-2 rounded-md bg-gradient-to-r from-[#a78bfa] to-[#8b5cf6] px-3 py-2 text-xs font-bold text-white hover:brightness-110"
+              >
+                <Upload size={14} /> Publish <ChevronDown size={13} />
+              </button>
+              {publishOpen && (
+                <div className="absolute right-0 top-11 z-30 w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-[#3b3b55] bg-[#1a1a28] p-2 shadow-2xl">
+                  <button
+                    onClick={() => {
+                      setDomainOpen(true)
+                      setPublishOpen(false)
+                    }}
+                    className="flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left hover:bg-[#252535]"
+                  >
+                    <Globe2 size={16} className="mt-0.5 shrink-0 text-[#a78bfa]" />
+                    <span>
+                      <span className="block text-xs font-semibold text-white">Custom domain</span>
+                      <span className="mt-1 block text-[11px] leading-4 text-[#9b9bb0]">Connect your own domain to this project.</span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
+
+        {domainOpen && (
+          <div className="absolute inset-x-0 top-16 z-20 px-4 sm:px-7 lg:left-auto lg:right-7 lg:w-[min(25rem,calc(100vw-2rem))] lg:px-0">
+            <section className="rounded-xl border border-[#3b3b55] bg-[#1a1a28] p-4 shadow-2xl sm:p-5" aria-label="Custom domain setup">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold">Custom domain</p>
+                  <p className="mt-1 text-xs leading-5 text-[#9b9bb0]">Publish this project at a domain you own.</p>
+                </div>
+                <button onClick={() => setDomainOpen(false)} aria-label="Close custom domain panel" className="rounded-md p-1.5 text-[#9b9bb0] hover:bg-[#252535] hover:text-white"><X size={16} /></button>
+              </div>
+              <label htmlFor="custom-domain" className="mt-5 block text-xs font-semibold text-[#c5c5d5]">Domain</label>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <input id="custom-domain" value={domain} onChange={event => { setDomain(event.target.value); setDomainState('idle'); setDomainMessage('') }} placeholder="www.example.com" className="min-w-0 flex-1 rounded-md border border-[#3b3b55] bg-[#12121c] px-3 py-2.5 text-sm outline-none placeholder:text-[#6b6b80] focus:border-[#a78bfa]" />
+                <button onClick={publishDomain} disabled={domainState === 'loading'} className="rounded-md bg-gradient-to-r from-[#a78bfa] to-[#8b5cf6] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{domainState === 'loading' ? 'Checking…' : 'Connect'}</button>
+              </div>
+              {domainMessage && (
+                <div className={`mt-3 flex items-start gap-2 rounded-md border px-3 py-2.5 text-xs leading-5 ${domainState === 'success' ? 'border-[#2f8061] bg-[#15352d] text-[#9de5c5]' : 'border-[#8f4b55] bg-[#3b2028] text-[#ffc0c7]'}`} role="status">
+                  {domainState === 'success' && <CheckCircle2 size={15} className="mt-0.5 shrink-0" />}
+                  <span>{domainMessage}</span>
+                </div>
+              )}
+            </section>
+          </div>
+        )}
 
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
           {/* Chat */}

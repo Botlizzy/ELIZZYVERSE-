@@ -41,21 +41,40 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(25000),
     })
 
-    if (!response.ok) throw new Error(`Provider returned ${response.status}`)
+    const raw = await response.text()
+    let data: unknown
+    try {
+      data = raw ? JSON.parse(raw) : raw
+    } catch {
+      data = raw
+    }
 
-    const data = await response.json()
-    const content =
-      data.result ??
-      data.choices?.[0]?.message?.content ??
-      data.output ??
-      data.content ??
-      (typeof data === 'string' ? data : JSON.stringify(data))
+    if (!response.ok) {
+      const providerError = extractContent(data)
+      return NextResponse.json(
+        { error: providerError || `Provider returned ${response.status}.` },
+        { status: response.status >= 500 ? 502 : response.status },
+      )
+    }
 
-    return NextResponse.json({ content })
-  } catch {
-    return NextResponse.json(
-      { error: 'Could not reach the AI endpoint. Try again.' },
-      { status: 502 },
-    )
+    return NextResponse.json({ content: extractContent(data) || 'Generation complete.' })
+  } catch (error) {
+    const message = error instanceof Error && error.name === 'TimeoutError'
+      ? 'The AI endpoint timed out. Try again.'
+      : 'Could not reach the AI endpoint. Try again.'
+    return NextResponse.json({ error: message }, { status: 502 })
   }
+}
+
+function extractContent(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (!value || typeof value !== 'object') return ''
+  const data = value as Record<string, unknown>
+  const choices = Array.isArray(data.choices) ? data.choices : []
+  const choice = choices[0] && typeof choices[0] === 'object' ? choices[0] as Record<string, unknown> : undefined
+  const message = choice?.message && typeof choice.message === 'object' ? choice.message as Record<string, unknown> : undefined
+  const content = data.result ?? message?.content ?? choice?.text ?? data.output ?? data.content
+  if (typeof content === 'string') return content
+  if (content !== undefined && content !== null) return JSON.stringify(content)
+  return JSON.stringify(value)
 }
